@@ -28,5 +28,5 @@ Thumbs.db
 # Tool output
 graphify-out/
 
-# Documentation (markdown files are not tracked)
-*.md
+# Documentation (README.md is tracked; reference-docs markdown is not)
+reference-docs/*.md
