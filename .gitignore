@@ -1,0 +1,32 @@
+# Build output
+target/
+*.class
+*.jar
+*.war
+
+# Application logs
+logs/
+*.log
+
+# IDE / editor
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local environment overrides and secrets
+.env
+.env.*
+
+# Tool output
+graphify-out/
+
+# Documentation (markdown files are not tracked)
+*.md

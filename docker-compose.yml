@@ -1,0 +1,62 @@
+services:
+  primary:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: booking
+      POSTGRES_USER: booking
+      POSTGRES_PASSWORD: booking
+    command: ["postgres", "-c", "wal_level=replica", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10"]
+    ports:
+      - "15432:5432"
+    volumes:
+      - primary-data:/var/lib/postgresql/data
+      - ./docker/primary/init-replication.sh:/docker-entrypoint-initdb.d/10-init-replication.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booking -d booking"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  replica:
+    image: postgres:16
+    user: postgres
+    depends_on:
+      primary:
+        condition: service_healthy
+    environment:
+      # Artificial replay delay so stale reads are easy to reproduce. Change at runtime with
+      # scripts/set-replica-lag.sh. Use 0 for normal replication.
+      REPLICA_APPLY_DELAY: ${REPLICA_APPLY_DELAY:-3s}
+    entrypoint: ["bash", "/replica-entrypoint.sh"]
+    ports:
+      - "15433:5432"
+    volumes:
+      - replica-data:/var/lib/postgresql/data
+      - ./docker/replica/entrypoint.sh:/replica-entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booking -d booking"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  app:
+    build: .
+    depends_on:
+      primary:
+        condition: service_healthy
+      replica:
+        condition: service_healthy
+    environment:
+      PRIMARY_URL: jdbc:postgresql://primary:5432/booking
+      REPLICA_URL: jdbc:postgresql://replica:5432/booking
+      # INFO by default. Use DEBUG to see debug logs: APP_LOG_LEVEL=DEBUG scripts/start.sh
+      APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+    ports:
+      - "8080:8080"
+    volumes:
+      # Log file is readable on the host: tail -f logs/app.log
+      - ./logs:/app/logs
+
+volumes:
+  primary-data:
+  replica-data:

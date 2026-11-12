@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: event-booking-cqrs
+  threads:
+    virtual:
+      enabled: true
+  flyway:
+    # Migrations always run against the primary; the replica receives the schema via replication.
+    locations: classpath:db/migration
+
+app:
+  datasource:
+    primary:
+      jdbc-url: ${PRIMARY_URL:jdbc:postgresql://localhost:15432/booking}
+      username: ${DB_USER:booking}
+      password: ${DB_PASSWORD:booking}
+      maximum-pool-size: ${PRIMARY_POOL_SIZE:20}
+    replica:
+      jdbc-url: ${REPLICA_URL:jdbc:postgresql://localhost:15433/booking}
+      username: ${DB_USER:booking}
+      password: ${DB_PASSWORD:booking}
+      maximum-pool-size: ${REPLICA_POOL_SIZE:40}
+      read-only: true
+  consistency:
+    # Reads carrying an X-Read-After token younger than this window are served by the primary.
+    # Set it a bit above the worst replication lag you expect.
+    read-after-window: ${READ_AFTER_WINDOW:5s}
+
+logging:
+  file:
+    # Relative to the working directory: ./logs/app.log locally, /app/logs/app.log in the container
+    # (docker-compose mounts that folder to ./logs on the host). Console logging stays on as well.
+    name: ${LOG_FILE:logs/app.log}
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 7
+      total-size-cap: 100MB
+  level:
+    root: INFO
+    # Set APP_LOG_LEVEL=DEBUG to see the debug statements written in this project.
+    com.example.eventbooking: ${APP_LOG_LEVEL:INFO}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
