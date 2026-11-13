@@ -1,0 +1,140 @@
+# Project name is pinned so containers and volumes keep their names (event-booking-cqrs-*) now that this
+# file lives in infra/. Run from the repo root: docker compose -f infra/docker-compose.yml up
+name: event-booking-cqrs
+
+services:
+  primary:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: booking
+      POSTGRES_USER: booking
+      POSTGRES_PASSWORD: booking
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10"]
+    ports:
+      - "15432:5432"
+    volumes:
+      - primary-data:/var/lib/postgresql/data
+      - ../docker/primary/init-replication.sh:/docker-entrypoint-initdb.d/10-init-replication.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booking -d booking"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  replica:
+    image: postgres:16
+    user: postgres
+    depends_on:
+      primary:
+        condition: service_healthy
+    environment:
+      # Artificial replay delay so stale reads are easy to reproduce. Change at runtime with
+      # scripts/set-replica-lag.sh. Use 0 for normal replication.
+      REPLICA_APPLY_DELAY: ${REPLICA_APPLY_DELAY:-3s}
+    entrypoint: ["bash", "/replica-entrypoint.sh"]
+    ports:
+      - "15433:5432"
+    volumes:
+      - replica-data:/var/lib/postgresql/data
+      - ../docker/replica/entrypoint.sh:/replica-entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booking -d booking"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  redis:
+    image: redis:7-alpine
+    # Pure cache: bounded memory, evict least recently used keys, no persistence.
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  kafka:
+    image: apache/kafka:3.8.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      # kafka:9092 for containers, localhost:29092 for tools and the app running on the host
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    ports:
+      - "29092:29092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  # Debezium runs inside Kafka Connect. It tails the primary's WAL (logical decoding) and publishes outbox rows.
+  connect:
+    image: quay.io/debezium/connect:2.7
+    depends_on:
+      kafka:
+        condition: service_healthy
+      primary:
+        condition: service_healthy
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: connect
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+    ports:
+      - "8083:8083"
+
+  # One-shot: registers (or updates) the outbox connector through the Connect REST API, then exits.
+  connect-init:
+    image: curlimages/curl:8.10.1
+    depends_on:
+      - connect
+    restart: "no"
+    volumes:
+      - ../docker/debezium/outbox-connector.json:/outbox-connector.json:ro
+    entrypoint: ["sh", "-c", "until curl -sf http://connect:8083/connectors > /dev/null; do echo waiting for connect; sleep 3; done; curl -sf -X PUT -H 'Content-Type: application/json' --data @/outbox-connector.json http://connect:8083/connectors/outbox-connector/config && echo registered"]
+
+  app:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    depends_on:
+      primary:
+        condition: service_healthy
+      replica:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      PRIMARY_URL: jdbc:postgresql://primary:5432/booking
+      REPLICA_URL: jdbc:postgresql://replica:5432/booking
+      # INFO by default. Use DEBUG to see debug logs: APP_LOG_LEVEL=DEBUG scripts/start.sh
+      APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+    ports:
+      - "8080:8080"
+    volumes:
+      # Log file is readable on the host: tail -f logs/app.log
+      - ../logs:/app/logs
+
+volumes:
+  primary-data:
+  replica-data:

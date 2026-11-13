@@ -4,6 +4,19 @@ spring:
   threads:
     virtual:
       enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      # Short timeouts: a slow or dead Redis must cost a few ms per request, not seconds.
+      timeout: 200ms
+      connect-timeout: 200ms
+  kafka:
+    # Host port 29092 when the app runs outside Docker, kafka:9092 inside compose.
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    consumer:
+      # A fresh consumer group replays the topic. Extra invalidations are harmless.
+      auto-offset-reset: earliest
   flyway:
     # Migrations always run against the primary; the replica receives the schema via replication.
     locations: classpath:db/migration
@@ -25,6 +38,20 @@ app:
     # Reads carrying an X-Read-After token younger than this window are served by the primary.
     # Set it a bit above the worst replication lag you expect.
     read-after-window: ${READ_AFTER_WINDOW:5s}
+  cache:
+    enabled: ${CACHE_ENABLED:true}
+    event-ttl: 60s
+    list-ttl: 30s
+    booking-ttl: 10m
+    # Second invalidation, after the replica has caught up. Keep equal to read-after-window.
+    second-invalidation-delay: ${READ_AFTER_WINDOW:5s}
+    # Stale-while-revalidate: after this fraction of the TTL an entry is still served, and one request
+    # refreshes it in the background. See single-flight-vs-stale-while-revalidate.md.
+    soft-ttl-ratio: 0.8
+    # Single-flight rebuild of a missing key: lock safety expiry, and how long other requests wait for the
+    # rebuilder before loading the value themselves.
+    rebuild-lock-ttl: 5s
+    rebuild-wait: 1s
 
 logging:
   file:

@@ -6,9 +6,9 @@ set -e
 cd "$(dirname "$0")/.."
 
 if [ "$1" = "--clean" ]; then
-    docker compose down -v
+    docker compose -f infra/docker-compose.yml down -v
     echo "Stopped and removed all data."
 else
-    docker compose down
+    docker compose -f infra/docker-compose.yml down
     echo "Stopped. Data kept (use --clean to delete it)."
 fi

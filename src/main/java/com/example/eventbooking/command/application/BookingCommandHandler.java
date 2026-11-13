@@ -4,6 +4,7 @@ import com.example.eventbooking.command.domain.InsufficientInventoryException;
 import com.example.eventbooking.command.domain.TierNotFoundException;
 import com.example.eventbooking.command.infrastructure.BookingWriteRepository;
 import com.example.eventbooking.command.infrastructure.EventListingProjector;
+import com.example.eventbooking.outbox.OutboxWriter;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,10 +18,12 @@ public class BookingCommandHandler {
 
     private final BookingWriteRepository bookings;
     private final EventListingProjector listing;
+    private final OutboxWriter outbox;
 
-    BookingCommandHandler(BookingWriteRepository bookings, EventListingProjector listing) {
+    BookingCommandHandler(BookingWriteRepository bookings, EventListingProjector listing, OutboxWriter outbox) {
         this.bookings = bookings;
         this.listing = listing;
+        this.outbox = outbox;
     }
 
     @Transactional
@@ -36,6 +39,8 @@ public class BookingCommandHandler {
         bookings.insertBooking(bookingId, command.eventId(), command.tierId(),
                 command.quantity(), command.customerEmail());
         listing.onTicketsBooked(command.eventId(), command.quantity());
+        // Availability changed, so cached event detail and listings are stale.
+        outbox.eventChanged("TicketsBooked", command.eventId());
         log.info("Booking created: id={} event={} tier={} qty={}",
                 bookingId, command.eventId(), command.tierId(), command.quantity());
         return bookingId;

@@ -1,0 +1,10 @@
+# Keep the image build context small. The Dockerfile only needs pom.xml and src/.
+.git
+target
+logs
+ui
+reference-docs
+docs
+k6
+scripts
+*.md

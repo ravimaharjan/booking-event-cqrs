@@ -1,5 +1,6 @@
 package com.example.eventbooking.query.api;
 
+import com.example.eventbooking.cache.CacheStatus;
 import com.example.eventbooking.consistency.ReadAfterToken;
 import com.example.eventbooking.consistency.ReadSource;
 import com.example.eventbooking.consistency.ReadSourceResolver;
@@ -19,7 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Read side. Served from a replica unless the caller presents a recent {@code X-Read-After} token,
  * in which case the primary is used so the caller sees their own writes. {@code X-Served-By} reports
- * which one answered.
+ * which one answered: {@code primary}, {@code replica} or {@code cache} (Redis, replica reads only).
+ * {@code X-Cache} says what the cache did: {@code hit}, {@code stale}, {@code miss}, {@code coalesced} or
+ * {@code bypass}.
  */
 @RestController
 @RequestMapping("/api/queries")
@@ -64,6 +67,9 @@ class QueryController {
 
     private static ResponseEntity<?> respond(Optional<?> body, ReadSource source) {
         ResponseEntity.BodyBuilder builder = body.isPresent() ? ResponseEntity.ok() : ResponseEntity.status(404);
-        return builder.header(ReadAfterToken.SERVED_BY_HEADER, source.name().toLowerCase()).body(body.orElse(null));
+        String servedBy = CacheStatus.wasHit() ? "cache" : source.name().toLowerCase();
+        return builder.header(ReadAfterToken.SERVED_BY_HEADER, servedBy)
+                .header(CacheStatus.HEADER, CacheStatus.state().headerValue())
+                .body(body.orElse(null));
     }
 }

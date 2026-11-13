@@ -2,6 +2,7 @@ package com.example.eventbooking.command.application;
 
 import com.example.eventbooking.command.domain.EventCreated;
 import com.example.eventbooking.command.infrastructure.EventWriteRepository;
+import com.example.eventbooking.outbox.OutboxWriter;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,10 +17,12 @@ public class EventCommandHandler {
 
     private final EventWriteRepository events;
     private final ApplicationEventPublisher publisher;
+    private final OutboxWriter outbox;
 
-    EventCommandHandler(EventWriteRepository events, ApplicationEventPublisher publisher) {
+    EventCommandHandler(EventWriteRepository events, ApplicationEventPublisher publisher, OutboxWriter outbox) {
         this.events = events;
         this.publisher = publisher;
+        this.outbox = outbox;
     }
 
     @Transactional
@@ -38,6 +41,8 @@ public class EventCommandHandler {
         // That is deliberate. Making the listener asynchronous would make the read model eventually
         // consistent and break the read-after-write guarantee this project demonstrates.
         publisher.publishEvent(new EventCreated(eventId));
+        // Same transaction: Debezium turns this into a Kafka message that invalidates cached listings.
+        outbox.eventChanged("EventCreated", eventId);
         log.info("Event created: id={} city={} tiers={}", eventId, command.city(), command.tiers().size());
         return eventId;
     }

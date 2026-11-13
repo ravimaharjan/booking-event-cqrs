@@ -1,5 +1,5 @@
 #!/bin/bash
-# Shows the stale-read problem and the read-after-write fix. Requires `docker compose up` and a replica lag > 0
+# Shows the stale-read problem and the read-after-write fix. Requires `docker compose -f infra/docker-compose.yml up` and a replica lag > 0
 # (default 3s). Needs only curl.
 set -e
 BASE="${BASE:-http://localhost:8080}"

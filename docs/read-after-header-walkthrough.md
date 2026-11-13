@@ -25,7 +25,7 @@ primary to replica.
 ## Setup
 
 ```bash
-docker compose up -d
+docker compose -f infra/docker-compose.yml up -d
 BASE=http://localhost:8080
 ```
 
