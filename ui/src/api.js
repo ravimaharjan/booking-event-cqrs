@@ -1,6 +1,7 @@
 // One place that calls the backend and records what the cache did, read from the response headers:
 //   X-Served-By: primary | replica | cache      who produced the body
-//   X-Cache:     hit | stale | miss | coalesced | bypass   what the cache did for this request
+//   X-Cache:     local | hit | stale | miss | coalesced | bypass   what the cache did for this request
+//   X-Proxy-Cache: HIT | MISS | EXPIRED | UPDATING | BYPASS   what the caching proxy in front did (port 8088 only)
 export const TOKEN_HEADER = 'X-Read-After';
 
 export async function call({ method = 'GET', path, body, token }) {
@@ -29,6 +30,7 @@ export async function call({ method = 'GET', path, body, token }) {
     ms,
     servedBy: res.headers.get('X-Served-By'),
     cache: res.headers.get('X-Cache'),
+    edge: res.headers.get('X-Proxy-Cache'),
     issuedToken: res.headers.get(TOKEN_HEADER),
     sentToken: Boolean(token),
     body: json,
@@ -48,6 +50,12 @@ export const listEvents = ({ city, page, size }, token) => {
   const params = new URLSearchParams({ page, size });
   if (city) params.set('city', city);
   return call({ path: `/api/queries/events?${params}`, token });
+};
+
+export const listBookings = ({ eventId, page, size }, token) => {
+  const params = new URLSearchParams({ page, size });
+  if (eventId) params.set('eventId', eventId);
+  return call({ path: `/api/queries/bookings?${params}`, token });
 };
 
 export async function health() {

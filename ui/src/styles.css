@@ -271,6 +271,7 @@ pre {
   border-color: var(--bad);
 }
 .badge.served-cache,
+.badge.cache-local,
 .badge.cache-hit {
   color: var(--cache);
   border-color: var(--cache);
@@ -348,4 +349,141 @@ table {
 }
 .summary td.bad {
   color: var(--bad);
+}
+
+.badge.edge-hit,
+.badge.edge-updating,
+.badge.edge-stale {
+  color: var(--cache);
+  border-color: var(--cache);
+}
+.badge.edge-miss,
+.badge.edge-expired,
+.badge.edge-bypass {
+  color: var(--replica);
+  border-color: var(--replica);
+}
+
+/* multi-page layout */
+header {
+  gap: 16px;
+  flex-wrap: wrap;
+}
+header nav {
+  display: flex;
+  gap: 4px;
+  margin-right: auto;
+  margin-left: 12px;
+}
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+a.nav {
+  padding: 6px 12px;
+  border-radius: 7px;
+  color: var(--text);
+}
+a.nav.active {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+a.btn {
+  display: inline-block;
+  padding: 7px 14px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+a.btn.ghost {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+a.btn:hover {
+  text-decoration: none;
+}
+.event-name {
+  font-size: 22px;
+  margin: 4px 0;
+}
+table.items {
+  width: 100%;
+  border-collapse: collapse;
+}
+table.items th {
+  text-align: left;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+table.items td {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+table.items td.actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  border-bottom: 0;
+}
+
+/* page on the left, inspector on the right */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 460px);
+  gap: 16px;
+  align-items: start;
+}
+.layout aside {
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+.layout aside pre {
+  max-height: 260px;
+  overflow: auto;
+}
+.layout aside table.log {
+  font-size: 12px;
+}
+.layout aside .log th:nth-child(n + 6),
+.layout aside .log td:nth-child(n + 6) {
+  display: none;
+}
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .layout aside {
+    position: static;
+    max-height: none;
+  }
+}
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.pager select {
+  width: auto;
+}
+tr.clickable {
+  cursor: pointer;
+}
+tr.clickable:hover td {
+  background: var(--code);
+}
+.app {
+  max-width: 1600px;
 }

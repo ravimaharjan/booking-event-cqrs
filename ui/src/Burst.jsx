@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { getEvent } from './api.js';
 
-const KINDS = ['hit', 'stale', 'miss', 'coalesced', 'bypass'];
+const KINDS = ['local', 'hit', 'stale', 'miss', 'coalesced', 'bypass'];
 
 function percentile(sorted, p) {
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))];
@@ -42,10 +42,10 @@ export default function Burst({ eventId, setEventId, token, useToken, onDone }) 
       <h2>Hot key burst</h2>
       <p className="hint">
         Sends many concurrent reads of one event. Try it right after booking that event (the booking invalidates its
-        cache entry) and compare <b>miss</b> with <b>coalesced</b>: only one request should have read the database.
+        cache entry) and compare <b>miss</b> with <b>coalesced</b> (and <b>local</b>, served from the app\u2019s memory): only one request should have read the database.
       </p>
       <div className="row">
-        <input value={eventId} onChange={(e) => setEventId(e.target.value)} placeholder="event id" />
+        <input value={eventId} onChange={(e) => setEventId?.(e.target.value)} readOnly={!setEventId} placeholder="event id" />
         <input
           type="number"
           min="1"
