@@ -80,11 +80,12 @@ Only single-flight protects against that. So:
 
 ## 6. Where and how each one is applied
 
-All of it is in `CacheLoader.getOrLoad`, which `CachingEventReader` (event detail, listings) and
+All of it is in `CacheLoader.getOrLoad` (after the in-process L1 lookup, see `cache-advanche.md`), which `CachingEventReader` (event detail, listings) and
 `CachingBookingReader` (bookings) call for every replica read.
 
 ```
 getOrLoad(key)
+ ├─ entry in this instance's memory (L1, 500 ms) ─────► return it                    (X-Cache: local)
  ├─ entry in Redis and not soft-expired ──────────────► return it                    (X-Cache: hit)
  ├─ entry in Redis and soft-expired ──────────────────► return it, start refresh     (X-Cache: stale)
  │     refreshInBackground: one per key per JVM (a Set), then one per cluster (Redis lock)
@@ -97,7 +98,7 @@ getOrLoad(key)
 
 ### Stale-while-revalidate
 
-- `ReadCache.put` stores `{"softUntil": <epoch ms>, "value": ...}` under a key with a hard TTL (jittered).
+- `ReadCache.put` stores `<softUntil epoch ms>|<json>` under a key with a hard TTL (jittered).
   `softUntil = now + hardTtl * soft-ttl-ratio`.
 - `ReadCache.getEntry` returns the value with its `softUntil`.
 - `CacheLoader.refreshInBackground` runs the refresh on a virtual thread, so the request that triggered it is not

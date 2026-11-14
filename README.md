@@ -92,10 +92,17 @@ outbox row that Debezium publishes to Kafka (`outbox.event`), and a consumer inv
 the second time after the replica has caught up). When a hot entry expires, only one request rebuilds it.
 Reads carrying a recent `X-Read-After` token bypass Redis. Disable the cache with `CACHE_ENABLED=false`.
 
+Layers in front of Redis, for high read volume: an in-process cache per app instance (500 ms) and an optional
+caching proxy on port **8088** (nginx, standing in for a CDN; the app itself is on 8080). Public query responses carry
+`Cache-Control: s-maxage=1`; requests with an `X-Read-After` token bypass the proxy. Measured effect and design:
+[cache-advanche.md](cache-advanche.md).
+
 Detailed documents:
 
 - **[cache-ttl-and-invalidation.md](cache-ttl-and-invalidation.md)**: how TTL, jitter and invalidation keep the
   cache fresh, why there is a second invalidation, and where the TTLs are implemented.
+- **[cache-advanche.md](cache-advanche.md)**: scaling reads toward 200K requests per second (caching proxy, `Cache-Control`,
+  in-process cache), with measured results.
 - **[single-flight-vs-stale-while-revalidate.md](single-flight-vs-stale-while-revalidate.md)**: how a hot key
   expiring under 10,000 concurrent requests results in one database read, and where each technique is applied.
 
@@ -176,8 +183,11 @@ does `npm install` in `ui/`. Set `API_URL=http://host:8080` to point the UI at a
 scripts/demo.sh                  # stale read vs. read-after-write, side by side
 scripts/cache-demo.sh            # Redis cache, outbox + Debezium + Kafka invalidation
 scripts/set-replica-lag.sh 10s   # change artificial replica lag (0 to disable)
+scripts/capacity-test.sh         # (BASE_URL=http://localhost:8088 goes through the caching proxy) steps the read rate up (hot key; TARGET=mixed for many keys), prints pass/fail, CPU and memory
 k6 run k6/load-test.js           # ~500 rps reads, 5 rps bookings, asserts zero stale reads after writes
 ```
+
+What both tests check and their pass criteria: [docs/load-and-capacity-tests.md](docs/load-and-capacity-tests.md).
 
 The replica starts with a 3s artificial apply delay (`REPLICA_APPLY_DELAY`) so staleness is reproducible.
 
