@@ -20,7 +20,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * Cache-aside read with protection against expiry stampedes on hot keys. Two mechanisms work together:
+ * Cache-aside read with protection against expiry stampedes on hot keys. Lookup order: this JVM's memory (L1,
+ * {@link LocalCache}), then Redis, then the database. Two mechanisms protect the database:
  *
  * <ol>
  *   <li><b>Stale-while-revalidate</b> for the normal case. An entry has a soft expiry before its hard TTL.
@@ -42,6 +43,7 @@ class CacheLoader {
     private static final long POLL_MILLIS = 20;
 
     private final ReadCache cache;
+    private final LocalCache local;
     private final CacheProperties properties;
 
     /** Keys being rebuilt from a missing entry in this JVM. Followers wait on the leader's future. */
@@ -50,15 +52,28 @@ class CacheLoader {
     private final Set<String> refreshing = ConcurrentHashMap.newKeySet();
     private final ExecutorService refresher = Executors.newVirtualThreadPerTaskExecutor();
 
-    CacheLoader(ReadCache cache, CacheProperties properties) {
+    CacheLoader(ReadCache cache, LocalCache local, CacheProperties properties) {
         this.cache = cache;
+        this.local = local;
         this.properties = properties;
     }
 
     /**
      * @param loader reads the value from the database. Empty means "not found" and is never cached.
      */
+    @SuppressWarnings("unchecked")
     <T> Optional<T> getOrLoad(String key, TypeReference<T> type, Duration ttl, Supplier<Optional<T>> loader) {
+        Optional<Object> inMemory = local.get(key);
+        if (inMemory.isPresent()) {
+            CacheStatus.mark(CacheStatus.State.LOCAL);
+            return Optional.of((T) inMemory.get());
+        }
+        Optional<T> result = fetch(key, type, ttl, loader);
+        result.ifPresent(value -> local.put(key, value));
+        return result;
+    }
+
+    private <T> Optional<T> fetch(String key, TypeReference<T> type, Duration ttl, Supplier<Optional<T>> loader) {
         Optional<CacheEntry<T>> entry = cache.getEntry(key, type);
         if (entry.isPresent()) {
             if (!entry.get().softExpired(System.currentTimeMillis())) {

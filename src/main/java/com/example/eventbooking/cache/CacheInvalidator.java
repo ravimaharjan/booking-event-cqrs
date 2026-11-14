@@ -25,6 +25,7 @@ class CacheInvalidator {
     private static final Logger log = LoggerFactory.getLogger(CacheInvalidator.class);
 
     private final ReadCache cache;
+    private final LocalCache local;
     private final CacheProperties properties;
     private final ScheduledExecutorService delayed = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "cache-second-invalidation");
@@ -32,8 +33,9 @@ class CacheInvalidator {
         return t;
     });
 
-    CacheInvalidator(ReadCache cache, CacheProperties properties) {
+    CacheInvalidator(ReadCache cache, LocalCache local, CacheProperties properties) {
         this.cache = cache;
+        this.local = local;
         this.properties = properties;
     }
 
@@ -51,6 +53,8 @@ class CacheInvalidator {
 
     private void evict(UUID eventId, String city) {
         cache.delete(CacheKeys.event(eventId));
+        // This instance's own copy. Other instances' copies expire within app.cache.local-ttl.
+        local.invalidate(CacheKeys.event(eventId));
         // Listings are many keys (pages, sizes). One version bump retires all of them without SCAN.
         cache.bump(CacheKeys.listVersion(CacheKeys.ALL_CITIES));
         if (city != null) {

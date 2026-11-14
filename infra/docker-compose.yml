@@ -135,6 +135,16 @@ services:
       # Log file is readable on the host: tail -f logs/app.log
       - ../logs:/app/logs
 
+  # Caching reverse proxy (stands in for a CDN). Clients use :8088; the app is still directly on :8080.
+  edge:
+    image: nginx:1.27-alpine
+    depends_on:
+      - app
+    ports:
+      - "8088:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
 volumes:
   primary-data:
   replica-data:

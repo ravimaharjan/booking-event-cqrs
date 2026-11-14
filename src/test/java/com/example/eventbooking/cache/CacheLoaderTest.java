@@ -25,7 +25,7 @@ class CacheLoaderTest {
     private static final String KEY = "v1:event:hot";
 
     private final InMemoryReadCache cache = new InMemoryReadCache();
-    private final CacheLoader loader = new CacheLoader(cache, InMemoryReadCache.PROPERTIES);
+    private final CacheLoader loader = new CacheLoader(cache, new LocalCache(InMemoryReadCache.PROPERTIES), InMemoryReadCache.PROPERTIES);
 
     /** Runs {@code callers} concurrent reads of the hot key and returns every result. */
     private List<Optional<String>> hammer(int callers, java.util.function.Supplier<Optional<String>> db)

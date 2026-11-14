@@ -21,7 +21,7 @@ class CachingEventReaderTest {
     private final EventReader delegate = mock(EventReader.class);
     private final InMemoryReadCache cache = new InMemoryReadCache();
     private final CachingEventReader reader = new CachingEventReader(delegate,
-            new CacheLoader(cache, InMemoryReadCache.PROPERTIES), cache, InMemoryReadCache.PROPERTIES);
+            new CacheLoader(cache, new LocalCache(InMemoryReadCache.PROPERTIES), InMemoryReadCache.PROPERTIES), cache, InMemoryReadCache.PROPERTIES);
 
     private final UUID id = UUID.randomUUID();
     private final EventDetail detail = new EventDetail(id, "Concert", "Berlin", Instant.parse("2027-01-01T20:00:00Z"),
