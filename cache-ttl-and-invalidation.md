@@ -117,6 +117,6 @@ public void put(String key, Object value, Duration ttl) {
 ```
 
 This is a Redis `SET` with an expiry, so Redis removes the key itself. The stored value is wrapped as
-`{"softUntil": ..., "value": ...}`; see `single-flight-vs-stale-while-revalidate.md` for the soft expiry. Check a key with `redis-cli TTL <key>`.
+`<softUntil epoch ms>|<json>`; see `single-flight-vs-stale-while-revalidate.md` for the soft expiry. Check a key with `redis-cli TTL <key>`.
 
 Related: the listing version key has a 1 day TTL (`VERSION_TTL` in `ReadCache.java`).

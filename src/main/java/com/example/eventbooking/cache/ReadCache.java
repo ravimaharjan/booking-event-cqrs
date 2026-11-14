@@ -2,7 +2,6 @@ package com.example.eventbooking.cache;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.Arrays;
@@ -41,11 +40,13 @@ public class ReadCache {
     private final StringRedisTemplate redis;
     private final ObjectMapper mapper;
     private final CacheProperties properties;
+    private final LocalCache local;
 
-    ReadCache(StringRedisTemplate redis, ObjectMapper mapper, CacheProperties properties) {
+    ReadCache(StringRedisTemplate redis, ObjectMapper mapper, CacheProperties properties, LocalCache local) {
         this.redis = redis;
         this.mapper = mapper;
         this.properties = properties;
+        this.local = local;
     }
 
     /**
@@ -58,20 +59,24 @@ public class ReadCache {
         }
     }
 
-    /** Reads an entry written by {@link #put}. Anything else under the key (old format, bad JSON) counts as a miss. */
+    /**
+     * Reads an entry written by {@link #put}. The stored text is {@code <softUntilMillis>|<json>}: the value is parsed
+     * once, and anything else under the key (old format, bad JSON) counts as a miss.
+     */
     public <T> Optional<CacheEntry<T>> getEntry(String key, TypeReference<T> type) {
         try {
-            String json = redis.opsForValue().get(key);
-            if (json == null) {
+            String stored = redis.opsForValue().get(key);
+            if (stored == null) {
                 return Optional.empty();
             }
-            JsonNode node = mapper.readTree(json);
-            if (!node.has("softUntil") || !node.has("value")) {
+            int separator = stored.indexOf('|');
+            if (separator < 1) {
                 return Optional.empty();
             }
-            T value = mapper.readValue(mapper.treeAsTokens(node.get("value")), type);
-            return Optional.of(new CacheEntry<>(value, node.get("softUntil").asLong()));
-        } catch (RuntimeException | java.io.IOException e) {
+            long softUntil = Long.parseLong(stored, 0, separator, 10);
+            T value = mapper.readValue(stored.substring(separator + 1), type);
+            return Optional.of(new CacheEntry<>(value, softUntil));
+        } catch (RuntimeException | JsonProcessingException e) {
             log.warn("Cache read failed for {}, treating as miss: {}", key, e.toString());
             return Optional.empty();
         }
@@ -87,14 +92,11 @@ public class ReadCache {
             long jitter = ThreadLocalRandom.current().nextLong(-millis / 10, millis / 10 + 1);
             long hardMillis = millis + jitter;
             long softUntil = System.currentTimeMillis() + (long) (hardMillis * properties.softTtlRatio());
-            String json = mapper.writeValueAsString(new Envelope(softUntil, value));
-            redis.opsForValue().set(key, json, Duration.ofMillis(hardMillis));
+            redis.opsForValue().set(key, softUntil + "|" + mapper.writeValueAsString(value),
+                    Duration.ofMillis(hardMillis));
         } catch (RuntimeException | JsonProcessingException e) {
             log.warn("Cache write failed for {}: {}", key, e.toString());
         }
-    }
-
-    private record Envelope(long softUntil, Object value) {
     }
 
     /**
@@ -121,11 +123,20 @@ public class ReadCache {
         }
     }
 
-    /** Current version of a key family, 0 if none. Used to invalidate many keys with one increment. */
+    /**
+     * Current version of a key family, 0 if none. Used to invalidate many keys with one increment. The value is kept
+     * in this JVM for {@code app.cache.local-ttl}, so a listing request does not need a Redis call for it.
+     */
     public long version(String versionKey) {
+        Optional<Object> cached = local.get(versionKey);
+        if (cached.isPresent()) {
+            return (Long) cached.get();
+        }
         try {
             String v = redis.opsForValue().get(versionKey);
-            return v == null ? 0 : Long.parseLong(v);
+            long version = v == null ? 0 : Long.parseLong(v);
+            local.put(versionKey, version);
+            return version;
         } catch (RuntimeException e) {
             log.warn("Cache version read failed for {}: {}", versionKey, e.toString());
             return 0;
@@ -140,5 +151,6 @@ public class ReadCache {
     public void bump(String versionKey) {
         redis.opsForValue().increment(versionKey);
         redis.expire(versionKey, VERSION_TTL);
+        local.invalidate(versionKey);
     }
 }

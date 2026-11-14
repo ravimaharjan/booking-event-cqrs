@@ -52,6 +52,15 @@ app:
     # rebuilder before loading the value themselves.
     rebuild-lock-ttl: 5s
     rebuild-wait: 1s
+    # In-process cache (L1) in front of Redis. Also the extra staleness it can add. 0 disables it.
+    local-ttl: 500ms
+    local-max-entries: 10000
+
+  # Cache-Control on public query responses so a proxy or CDN in front can answer repeated requests itself.
+  http-cache:
+    enabled: ${HTTP_CACHE_ENABLED:true}
+    shared-max-age: 1s
+    stale-while-revalidate: 5s
 
 logging:
   file:

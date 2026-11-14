@@ -4,6 +4,7 @@ import com.example.eventbooking.consistency.ReadSource;
 import com.example.eventbooking.query.application.BookingReader;
 import com.example.eventbooking.query.application.BookingView;
 import com.fasterxml.jackson.core.type.TypeReference;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -38,5 +39,10 @@ class CachingBookingReader implements BookingReader {
         }
         return loader.getOrLoad(CacheKeys.booking(bookingId), VIEW, properties.bookingTtl(),
                 () -> delegate.findBooking(bookingId, source));
+    }
+
+    @Override
+    public List<BookingView> listBookings(UUID eventId, int page, int size, ReadSource source) {
+        return delegate.listBookings(eventId, page, size, source);
     }
 }

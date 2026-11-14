@@ -12,6 +12,8 @@ public final class CacheStatus {
 
     /** What the cache did. {@link #BYPASS} means it was not consulted (primary read, or cache disabled). */
     public enum State {
+        /** Served from this instance's own memory (L1), no Redis call. */
+        LOCAL,
         /** Fresh entry served from Redis. */
         HIT,
         /** Soft-expired entry served from Redis while one request refreshes it in the background. */
@@ -48,6 +50,6 @@ public final class CacheStatus {
     /** True when the response body came straight out of Redis. */
     public static boolean wasHit() {
         State state = state();
-        return state == State.HIT || state == State.STALE;
+        return state == State.LOCAL || state == State.HIT || state == State.STALE;
     }
 }

@@ -15,9 +15,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param rebuildLockTtl            safety expiry of the cross-instance rebuild lock, in case its owner dies
  * @param rebuildWait               how long a request waits for another request's rebuild of a missing key before
  *                                  loading it itself
+ * @param localTtl                  how long each app instance keeps a hot entry in its own memory (L1) in front of
+ *                                  Redis. Zero disables it. This is also the extra staleness it can add.
+ * @param localMaxEntries           size bound of that in-process cache
  */
 @ConfigurationProperties("app.cache")
 public record CacheProperties(boolean enabled, Duration eventTtl, Duration listTtl, Duration bookingTtl,
                               Duration secondInvalidationDelay, double softTtlRatio,
-                              Duration rebuildLockTtl, Duration rebuildWait) {
+                              Duration rebuildLockTtl, Duration rebuildWait, Duration localTtl,
+                              long localMaxEntries) {
 }

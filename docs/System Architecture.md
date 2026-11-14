@@ -105,6 +105,8 @@ flowchart LR
 | Debezium (Kafka Connect) | Reads outbox inserts from the primary's WAL and publishes them to Kafka. | `docker/debezium/` |
 | Kafka | Durable transport for change announcements (topic `outbox.event`, keyed by event id). | `:29092` |
 | Cache invalidation consumer | Reads `outbox.event` and removes the affected Redis entries (twice, see section 5). | `cache/CacheInvalidationConsumer` |
+| Caching proxy (`edge`, nginx) | Optional front door on port 8088. Caches public GET query responses for 1 second (`Cache-Control: s-maxage`), collapses concurrent misses, and bypasses requests that carry `X-Read-After`. Stands in for a CDN. | `infra/nginx/nginx.conf` |
+| In-process cache (L1) | Each app instance keeps hot entries for 500 ms so most hits need no Redis call. | `cache/LocalCache` |
 | Redis | Read cache. Entries have a TTL with jitter and a soft expiry. No persistence, LRU eviction. | `:6379` |
 | CacheLoader | Cache-aside lookup with single-flight rebuild and stale-while-revalidate. | `cache/CacheLoader` |
 
@@ -131,7 +133,10 @@ The Query API picks a source from the `X-Read-After` header:
 | No token, or token older than the window (default 5s) | Replica | Redis first, replica on a miss |
 | Token younger than the window | Primary | Bypassed (neither read nor filled), so the caller sees their own write |
 
-For a replica read, `CacheLoader` does the following:
+If a caching proxy is in front (port 8088), it answers repeated public GETs itself for up to a second. See
+[cache-advanche.md](../cache-advanche.md).
+
+For a replica read, `CacheLoader` first checks this instance's own memory (`X-Cache: local`), then does the following:
 
 - **fresh entry**: return it (`X-Cache: hit`)
 - **soft-expired entry**: return it and refresh it in the background, by one request only (`stale`)

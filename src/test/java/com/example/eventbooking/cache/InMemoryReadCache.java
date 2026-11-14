@@ -16,7 +16,7 @@ class InMemoryReadCache extends ReadCache {
 
     static final CacheProperties PROPERTIES = new CacheProperties(true, Duration.ofSeconds(60),
             Duration.ofSeconds(30), Duration.ofMinutes(10), Duration.ofSeconds(5), 0.8,
-            Duration.ofSeconds(5), Duration.ofMillis(500));
+            Duration.ofSeconds(5), Duration.ofMillis(500), Duration.ZERO, 0);
 
     final Map<String, CacheEntry<Object>> entries = new ConcurrentHashMap<>();
     final Map<String, Long> versions = new ConcurrentHashMap<>();
@@ -25,7 +25,7 @@ class InMemoryReadCache extends ReadCache {
     final AtomicLong lockAttempts = new AtomicLong();
 
     InMemoryReadCache() {
-        super(mock(StringRedisTemplate.class), new ObjectMapper(), PROPERTIES);
+        super(mock(StringRedisTemplate.class), new ObjectMapper(), PROPERTIES, new LocalCache(PROPERTIES));
     }
 
     @Override
