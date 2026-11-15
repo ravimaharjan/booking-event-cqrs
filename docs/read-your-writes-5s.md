@@ -1,10 +1,16 @@
-# X-Read-After walkthrough: which reads hit the primary, which hit the replica
+# Read-your-writes, approach 1: fixed time window (5s)
+
+This is the **time** approach (`app.consistency.mode=time`). The other supported approach, which checks the
+replica's real replication position instead of guessing a window, is in
+[read-your-writes-lsn.md](read-your-writes-lsn.md). Use one or the other; they are not combined.
 
 This doc walks through a sequence of API calls and shows, for each read, whether it is served by the
 **primary** or the **replica**, and why. It also shows the 5 second default window flipping a read from
 primary to replica.
 
-## The rules (from `ReadSourceResolver`)
+Enable it with `CONSISTENCY_MODE=time scripts/start.sh` (the default mode is `lsn`).
+
+## The rules (from `ReadSourceResolver`, time mode)
 
 | Request | Routed to |
 |---|---|
@@ -185,3 +191,13 @@ line of curl's output, which is the status code written by `-w`.)
   smaller than the real replication lag.
 - Window: set `READ_AFTER_WINDOW=15s` and restart the app to pin for longer.
 - Rule of thumb: window > worst-case replication lag, otherwise users can see their own writes disappear.
+
+## Trade-offs of this approach
+
+- Simple: no database call to decide, only clock arithmetic. Works with any replica technology.
+- It is a guess. If replication lag exceeds the window, users see their own writes disappear (the 10s lag case
+  above). If lag is much smaller, reads are sent to the primary for no reason until the window ends.
+- Depends on clocks: the token is the issuing node's clock, compared with the reading node's clock.
+- Pins to the primary for the whole window, and the cache is bypassed for that time.
+
+The LSN approach removes the guess: [read-your-writes-lsn.md](read-your-writes-lsn.md).

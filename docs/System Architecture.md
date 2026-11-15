@@ -95,7 +95,7 @@ flowchart LR
 
 | Component | Role | Where |
 |---|---|---|
-| Client | React UI (`ui/`) or any HTTP client. Keeps the `X-Read-After` token from command responses and sends it on follow-up reads. | `ui/` |
+| Client | React UI (`ui/`) or any HTTP client. Keeps the `X-Read-After` token from command responses and sends it on every read after that. | `ui/` |
 | Command API | Write side. Validates the request, runs one transaction on the primary, returns the token. | `command/` |
 | Query API | Read side. Chooses where to read from, adds `X-Served-By` and `X-Cache` headers. | `query/`, `consistency/` |
 | PostgreSQL primary | The only database that accepts writes. Holds the normalized tables, the denormalized `event_listing` view and the `outbox` table. | `infra/docker-compose.yml` (`:15432`) |
@@ -117,7 +117,8 @@ flowchart LR
    - writes the normalized tables (`events`, `ticket_tiers`, `bookings`),
    - updates the `event_listing` view,
    - inserts an `outbox` row (and deletes it again in the same transaction, so the table stays empty).
-3. After the commit the API returns the response with `X-Read-After: <commit time>`.
+3. After the commit the API returns the response with `X-Read-After`: the primary's WAL position (LSN mode, default)
+   or the commit time (time mode).
 4. The primary replicates the committed changes to the replica (physical streaming) and Debezium reads the outbox
    insert from the WAL (logical decoding). Both happen after the commit, so neither can announce a change that
    was rolled back.
@@ -130,8 +131,14 @@ The Query API picks a source from the `X-Read-After` header:
 
 | Request | Source | Cache |
 |---|---|---|
-| No token, or token older than the window (default 5s) | Replica | Redis first, replica on a miss |
-| Token younger than the window | Primary | Bypassed (neither read nor filled), so the caller sees their own write |
+| No token | Replica | Redis first, replica on a miss |
+| Token, **LSN mode** (default): replica has replayed the token's LSN | Replica | Redis first, replica on a miss |
+| Token, **LSN mode**: replica still behind after the short wait (100 ms), or the check fails | Primary | Bypassed (neither read nor filled), so the caller sees their own write |
+| Token, **time mode**: older than the window (default 5s) | Replica | Redis first, replica on a miss |
+| Token, **time mode**: younger than the window | Primary | Bypassed |
+
+The two modes are described in [read-your-writes-lsn.md](read-your-writes-lsn.md) and
+[read-your-writes-5s.md](read-your-writes-5s.md).
 
 If a caching proxy is in front (port 8088), it answers repeated public GETs itself for up to a second. See
 [cache-advanche.md](../cache-advanche.md).
@@ -151,7 +158,7 @@ Details and the reasoning: [single-flight-vs-stale-while-revalidate.md](../singl
 2. Debezium publishes it to Kafka (`outbox.event`, key = event id, payload `{type, eventId, city}`).
 3. The consumer deletes the event's detail key and bumps the version of the affected listings (one bump retires
    every page of a listing).
-4. **A second invalidation runs after the read-after window** (5s). Between the first one and the replica
+4. **A second invalidation runs after a fixed delay** (`app.cache.second-invalidation-delay`, 5s). Between the first one and the replica
    catching up, a reader can miss, read a still-lagging replica and cache the old value. The second invalidation
    removes it.
 
@@ -162,11 +169,13 @@ Entries also expire by TTL, which is the safety net if Kafka or Debezium is down
 
 | Reader | Guarantee |
 |---|---|
-| The user who just wrote | Read-your-writes. Their token routes reads to the primary for the window. |
+| The user who just wrote | Read-your-writes. Their token routes reads to the primary until the replica has the write (LSN mode) or for the window (time mode). |
 | Everyone else | Eventually consistent: they see a change after replication and invalidation, normally within seconds. |
 
-The window (`app.consistency.read-after-window`) must stay above the worst-case replication lag. The token is an
-opaque string, so it can later be replaced by a WAL position (LSN) without changing clients.
+In **time mode** the window (`app.consistency.read-after-window`) must stay above the worst-case replication lag,
+otherwise users can see their own writes disappear. **LSN mode** has no such tuning: it checks the replica's real
+position. The token is an opaque string in both, so clients are the same. Comparison and walkthroughs:
+[read-your-writes-lsn.md](read-your-writes-lsn.md), [read-your-writes-5s.md](read-your-writes-5s.md).
 
 ## 7. Failure behaviour
 

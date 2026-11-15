@@ -35,9 +35,13 @@ app:
       maximum-pool-size: ${REPLICA_POOL_SIZE:40}
       read-only: true
   consistency:
-    # Reads carrying an X-Read-After token younger than this window are served by the primary.
-    # Set it a bit above the worst replication lag you expect.
+    # lsn  : token is the primary's WAL position; a read goes to the replica only once it has replayed that LSN.
+    # time : token is the commit time; reads within read-after-window of it are pinned to the primary.
+    mode: ${CONSISTENCY_MODE:lsn}
+    # time mode: set a bit above the worst replication lag you expect.
     read-after-window: ${READ_AFTER_WINDOW:5s}
+    # lsn mode: how long a read waits for the replica to catch up before falling back to the primary.
+    lsn-wait-timeout: ${LSN_WAIT_TIMEOUT:100ms}
   cache:
     enabled: ${CACHE_ENABLED:true}
     event-ttl: 60s

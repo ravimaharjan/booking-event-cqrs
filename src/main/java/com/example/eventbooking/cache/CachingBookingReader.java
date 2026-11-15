@@ -41,6 +41,11 @@ class CachingBookingReader implements BookingReader {
                 () -> delegate.findBooking(bookingId, source));
     }
 
+    /**
+     * Deliberately not cached. Unlike an event list, a booking list is private per user, so a shared cache fits
+     * badly, and it changes on every new booking, which would need versioned-key invalidation like the event lists.
+     * Single bookings are cached by id (see {@link #findBooking}) because they never change.
+     */
     @Override
     public List<BookingView> listBookings(UUID eventId, int page, int size, ReadSource source) {
         return delegate.listBookings(eventId, page, size, source);

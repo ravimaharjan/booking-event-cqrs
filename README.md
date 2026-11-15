@@ -12,7 +12,8 @@ Spring Boot 3 / Java 21 / PostgreSQL (primary + streaming replica) / Redis / Kaf
   (transactional outbox, Debezium, Kafka) with a delayed second invalidation, and cache-stampede protection
   (single-flight rebuild plus stale-while-revalidate).
 - **Demonstrate the read-after-write (read-your-writes) consistency pattern.** A consistency token routes a user's
-  follow-up reads to the primary until the replica and cache have caught up.
+  follow-up reads to the primary until the replica has caught up. Two approaches are supported: replica position
+  (LSN, default) and a fixed time window (5s).
 
 ## System Architecture
 
@@ -36,7 +37,8 @@ Block diagram, component roles, read/write/invalidation flows and failure behavi
 - View a booking.
 
 **Consistency and caching behaviour**
-- Every command returns an `X-Read-After` token; reads that present a fresh token are served by the primary.
+- Every command returns an `X-Read-After` token; a read that presents it is served by the primary until the replica
+  has applied that write (LSN mode, default) or for a fixed 5s window (time mode).
 - Every query response says who answered (`X-Served-By`: `cache`, `replica` or `primary`) and what the cache did
   (`X-Cache`: `hit`, `stale`, `miss`, `coalesced` or `bypass`).
 
@@ -47,7 +49,7 @@ Start it with `scripts/ui.sh` (see [Web UI](#web-ui)). The page has these views:
 | View | What it does |
 | ---- | ------------ |
 | Status bar | Shows whether the API is reachable. |
-| Read-after token bar | Shows the latest `X-Read-After` token and its age, and a switch to send it on reads (off = anonymous read from replica/cache; on and recent = primary). |
+| Read-after token bar | Shows the latest `X-Read-After` token and its age. The UI sends this token on every read. |
 | Create event | Form for name, city, start time and ticket tiers (name, price in cents, quantity). |
 | Book tickets | Pick an event and tier, set quantity and email, and book. "Load tiers" fills the tier list. |
 | View event | Fetch one event by id. Recently created ids are offered as shortcuts. |
@@ -70,27 +72,35 @@ table through streaming replication.
 | `event_listing` | Read model (denormalized) | One row per event with the fields a listing needs: name, city, start time, lowest price and total available tickets. Indexed by `(city, starts_at, event_id)`. Updated in the same transaction as the write model, so replication delivers both together. |
 | `outbox` | Integration | Change announcements (aggregate, type, JSON payload). A row is inserted and deleted in the same transaction as the business change; Debezium reads the insert from the WAL and publishes it to Kafka, so the table stays empty. |
 
-## Strategy: read-after-write token (timestamp)
+## Strategy: read-your-writes token
 
 Commands write to the **primary**; queries read from a **replica**. Replication lag means a user who just
 booked a ticket may read stale data (or a 404) from the replica. The token fixes that:
 
-1. Every command response carries `X-Read-After: <commit time, epoch ms>`, issued after the commit.
+1. Every command response carries an `X-Read-After` token, issued after the commit.
 2. The client sends it back on follow-up reads.
-3. If the token is younger than `app.consistency.read-after-window` (default 5s, keep it above worst-case
-   replication lag), the read goes to the **primary**. Otherwise (or with no token, e.g. anonymous visitors)
-   it goes to a **replica**.
+3. The server decides between the **primary** and a **replica** using the token. No token (e.g. anonymous
+   visitors) always goes to a replica.
 4. `X-Served-By: primary|replica|cache` on every query response shows which one answered.
 
-Anonymous browsing (the high-volume read load) never touches the primary. Only users who just wrote do, and only
-for a few seconds. Walkthrough: [docs/read-after-header-walkthrough.md](docs/read-after-header-walkthrough.md).
+Anonymous browsing (the high-volume read load) never touches the primary. Only users who just wrote do.
+
+Two approaches are supported. Pick one with `app.consistency.mode` (env `CONSISTENCY_MODE`); each has its own document:
+
+| Mode | Token | A read with a token goes to the primary when... | Document |
+|---|---|---|---|
+| `lsn` (default) | Primary WAL position (e.g. `0/16B3748`) | the replica has not yet replayed that position (waits up to `LSN_WAIT_TIMEOUT`, 100 ms, first) | [docs/read-your-writes-lsn.md](docs/read-your-writes-lsn.md) |
+| `time` | Commit time (epoch ms) | the token is younger than `READ_AFTER_WINDOW` (5s) | [docs/read-your-writes-5s.md](docs/read-your-writes-5s.md) |
+
+The client behaves the same in both: store the token from the command response and send it back unchanged.
+Example: `CONSISTENCY_MODE=time scripts/start.sh`.
 
 ## Caching Strategy
 
 Anonymous reads go cache-aside through Redis. Entries have a TTL with jitter and a soft expiry; commands write an
 outbox row that Debezium publishes to Kafka (`outbox.event`), and a consumer invalidates the affected keys (twice,
 the second time after the replica has caught up). When a hot entry expires, only one request rebuilds it.
-Reads carrying a recent `X-Read-After` token bypass Redis. Disable the cache with `CACHE_ENABLED=false`.
+Reads routed to the primary (a token the replica has not caught up to, or a recent token in time mode) bypass Redis. Disable the cache with `CACHE_ENABLED=false`.
 
 Layers in front of Redis, for high read volume: an in-process cache per app instance (500 ms) and an optional
 caching proxy on port **8088** (nginx, standing in for a CDN; the app itself is on 8080). Public query responses carry
@@ -99,6 +109,10 @@ caching proxy on port **8088** (nginx, standing in for a CDN; the app itself is 
 
 Detailed documents:
 
+- **[docs/read-your-writes-lsn.md](docs/read-your-writes-lsn.md)**: read-your-writes using the replica's WAL position
+  (default), with a step-by-step timeline.
+- **[docs/read-your-writes-5s.md](docs/read-your-writes-5s.md)**: read-your-writes using a fixed time window, with a
+  timeline and the effect of different lag and window values.
 - **[cache-ttl-and-invalidation.md](cache-ttl-and-invalidation.md)**: how TTL, jitter and invalidation keep the
   cache fresh, why there is a second invalidation, and where the TTLs are implemented.
 - **[cache-advanche.md](cache-advanche.md)**: scaling reads toward 200K requests per second (caching proxy, `Cache-Control`,
