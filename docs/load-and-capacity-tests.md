@@ -32,7 +32,7 @@ The run fails if any of these is false:
 |---|---|
 | `http_req_failed < 1%` | Fewer than 1% of all requests error (non-2xx/3xx, or connection failure) |
 | `http_req_duration{scenario:browse} p(95) < 200 ms` | 95% of anonymous reads finish within 200 ms |
-| `stale_reads_after_write count == 0` | **Zero** booking reads returned anything but 200 right after the booking. This is the read-after-write guarantee: with the token, the read goes to the primary, so a 404 from a lagging replica must never happen |
+| `stale_reads_after_write count == 0` | **Zero** booking reads returned anything but 200 right after the booking. This is the read-after-write guarantee: with the token, the read goes to the primary while the replica is behind (LSN mode) or for the window (time mode), so a 404 from a lagging replica must never happen |
 
 It also records per-request checks (`list 200`, `detail 200`, `booked 201`) that appear in the summary.
 

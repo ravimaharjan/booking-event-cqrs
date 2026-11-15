@@ -25,7 +25,6 @@ export const useSession = () => useContext(SessionContext);
 export function SessionProvider({ children }) {
   const [apiUp, setApiUp] = useState(null);
   const [token, setToken] = useState(load('token', null)); // { value, issuedAt }
-  const [useToken, setUseToken] = useState(false);
   const [log, setLog] = useState([]);
   const [last, setLast] = useState(null);
   const [recent, setRecent] = useState(load('recent', { events: [], bookings: [] }));
@@ -57,7 +56,7 @@ export function SessionProvider({ children }) {
     return r;
   }, []);
 
-  const readToken = useToken && token ? token.value : undefined;
+  const readToken = token ? token.value : undefined;
 
   const run = useCallback(
     async (fn) => {
@@ -76,9 +75,9 @@ export function SessionProvider({ children }) {
 
   const value = useMemo(
     () => ({
-      apiUp, token, useToken, setUseToken, readToken, log, setLog, last, setLast, recent, remember, record, run, busy,
+      apiUp, token, readToken, log, setLog, last, setLast, recent, remember, record, run, busy,
     }),
-    [apiUp, token, useToken, readToken, log, last, recent, remember, record, run, busy],
+    [apiUp, token, readToken, log, last, recent, remember, record, run, busy],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

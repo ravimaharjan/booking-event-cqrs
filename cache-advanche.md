@@ -10,7 +10,7 @@ Requirement, approach and results for taking the read side from about 10K reques
 | Traffic | **200,000 requests per second at peak** on the event listing and booking list views |
 | Goal | The database and the app stay healthy and latency stays low at that rate |
 | Pages | Event listing by city, event detail (public, same for everyone). Booking list (private, per user) |
-| Freshness | A few seconds of staleness is acceptable for anonymous readers. A user who just wrote must still see their own write (read-after-write token) |
+| Freshness | A few seconds of staleness is acceptable for anonymous readers. A user who just wrote must still see their own write (read-after-write token, either LSN or time based: see docs/read-your-writes-lsn.md and docs/read-your-writes-5s.md) |
 
 The booking list is private per user. This project has no "list my bookings" endpoint yet, only "view booking by id".
 

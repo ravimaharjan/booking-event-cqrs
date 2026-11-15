@@ -54,7 +54,7 @@ gradually and the database load stays smooth.
 ## 5. Why a second invalidation
 
 `CacheInvalidator.invalidateEvent` evicts twice: immediately, and again after
-`app.cache.second-invalidation-delay` (equal to the read-after window, 5s by default).
+`app.cache.second-invalidation-delay` (5s by default, set from `READ_AFTER_WINDOW`; it is used in both consistency modes).
 
 The problem it solves is a race with replication lag:
 
@@ -79,13 +79,13 @@ scanning Redis. The old keys are never read again and disappear by their own TTL
 - **TTL:** an entry can never outlive its TTL: event detail 60s, listing 30s, booking 10m (immutable).
 - **Invalidation:** a write clears the affected event and listing entries within seconds.
 - **Second invalidation:** removes a stale value that was cached from a lagging replica.
-- **Primary reads bypass Redis:** a caller with a fresh `X-Read-After` token neither reads nor fills the cache.
+- **Primary reads bypass Redis:** a caller whose `X-Read-After` token routes to the primary (replica behind in LSN mode, or a token inside the window in time mode) neither reads nor fills the cache. See [docs/read-your-writes-lsn.md](docs/read-your-writes-lsn.md) for the cache caveat in LSN mode.
 
 Cases where data can still be stale:
 - the replica is stopped, or replication is stuck or badly lagging
 - Kafka or Debezium is down, so invalidation does not run. Event and listing entries then fall back to their TTL
   (60s and 30s)
-- the artificial replica lag (`scripts/set-replica-lag.sh`) is set above the read-after window
+- the artificial replica lag (`scripts/set-replica-lag.sh`) is set above the second-invalidation delay (5s)
 
 ## 7. TTL implementation
 

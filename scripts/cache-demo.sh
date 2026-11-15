@@ -1,6 +1,7 @@
 #!/bin/bash
 # Shows the Redis cache, outbox + Debezium + Kafka invalidation, and the read-after-write bypass.
-# Requires the full stack (scripts/start.sh) with the default 3s replica lag and 5s read-after window.
+# Requires the full stack (scripts/start.sh) with the default 3s replica lag. Works in both consistency modes
+# (lsn, the default, and time); the 5s second-invalidation delay applies in both.
 set -e
 BASE="${BASE:-http://localhost:8080}"
 

@@ -9,7 +9,7 @@ function percentile(sorted, p) {
 
 // Fires many concurrent reads of ONE event, like a hot key. Right after a booking (which invalidates the entry)
 // you should see exactly one "miss" and the rest "coalesced": a single database read for the whole crowd.
-export default function Burst({ eventId, setEventId, token, useToken, onDone }) {
+export default function Burst({ eventId, setEventId, token, onDone }) {
   const [count, setCount] = useState(200);
   const [running, setRunning] = useState(false);
   const [summary, setSummary] = useState(null);
@@ -18,7 +18,7 @@ export default function Burst({ eventId, setEventId, token, useToken, onDone }) 
     setRunning(true);
     const started = performance.now();
     const results = await Promise.all(
-      Array.from({ length: count }, () => getEvent(eventId, useToken ? token : undefined).catch(() => null)),
+      Array.from({ length: count }, () => getEvent(eventId, token).catch(() => null)),
     );
     const wall = performance.now() - started;
     const ok = results.filter(Boolean);

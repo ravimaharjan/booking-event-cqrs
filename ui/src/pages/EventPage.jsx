@@ -6,7 +6,7 @@ import { useSession } from '../session.jsx';
 import { money, when } from '../format.js';
 
 export default function EventPage({ eventId }) {
-  const { run, busy, readToken, token, useToken, setLast } = useSession();
+  const { run, busy, readToken, token, setLast } = useSession();
   const [result, setResult] = useState(null);
 
   const fetchEvent = useCallback(async () => {
@@ -59,7 +59,6 @@ export default function EventPage({ eventId }) {
       <Burst
         eventId={eventId}
         token={token?.value}
-        useToken={useToken}
         onDone={(r) => r && setLast(r)}
       />
     </>

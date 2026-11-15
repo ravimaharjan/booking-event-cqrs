@@ -129,6 +129,11 @@ services:
       REPLICA_URL: jdbc:postgresql://replica:5432/booking
       # INFO by default. Use DEBUG to see debug logs: APP_LOG_LEVEL=DEBUG scripts/start.sh
       APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+      # Read-your-writes approach: lsn (default) or time (fixed window). See docs/read-your-writes-lsn.md and
+      # docs/read-your-writes-5s.md. Example: CONSISTENCY_MODE=time scripts/start.sh
+      CONSISTENCY_MODE: ${CONSISTENCY_MODE:-lsn}
+      READ_AFTER_WINDOW: ${READ_AFTER_WINDOW:-5s}
+      LSN_WAIT_TIMEOUT: ${LSN_WAIT_TIMEOUT:-100ms}
     ports:
       - "8080:8080"
     volumes:

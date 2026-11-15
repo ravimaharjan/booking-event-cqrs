@@ -4,11 +4,13 @@ import java.time.Clock;
 import org.springframework.stereotype.Component;
 
 /**
- * Issues the consistency token returned by every command. The token is the epoch-millis time at which
- * the write was committed. Clients echo it back in the {@value #HEADER} header on subsequent reads.
+ * Issues the consistency token returned by every command. Clients echo it back in the
+ * {@value #HEADER} header on subsequent reads and treat it as opaque.
  *
- * <p>The token is an opaque string to clients. To move to LSN-based routing later, only this class and
- * {@link ReadSourceResolver} change.
+ * <ul>
+ *   <li>{@code lsn} mode: the primary's WAL position right after the commit (e.g. {@code 0/16B3748}).</li>
+ *   <li>{@code time} mode: the epoch-millis commit time.</li>
+ * </ul>
  */
 @Component
 public class ReadAfterToken {
@@ -17,13 +19,20 @@ public class ReadAfterToken {
     public static final String SERVED_BY_HEADER = "X-Served-By";
 
     private final Clock clock;
+    private final ConsistencyProperties properties;
+    private final ReplicationPositions positions;
 
-    ReadAfterToken(Clock clock) {
+    ReadAfterToken(Clock clock, ConsistencyProperties properties, ReplicationPositions positions) {
         this.clock = clock;
+        this.properties = properties;
+        this.positions = positions;
     }
 
     /** Call after the command's transaction has committed. */
     public String issue() {
-        return Long.toString(clock.millis());
+        if (properties.mode() == ConsistencyProperties.Mode.TIME) {
+            return Long.toString(clock.millis());
+        }
+        return positions.primaryPosition();
     }
 }
