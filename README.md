@@ -1,6 +1,8 @@
-# Event Booking - CQRS with Efficient Caching Strategy
-
-Spring Boot 3 / Java 21 / PostgreSQL (primary + streaming replica) / Redis / Kafka + Debezium, with a React web UI.
+<h3 align="center">Event Booking - CQRS with Efficient Caching Strategy</h3>
+<h4 align="center"> Spring Boot 3 / Java 21 / PostgreSQL (primary + streaming replica) / Redis / Kafka + Debezium, with a React web UI.</h4>
+<p align="center">
+  <img src="assets/event-booking.gif" alt="Event Booking Architecture" width="600" />
+</p>
 
 ## Objectives
 
@@ -27,16 +29,19 @@ Block diagram, component roles, read/write/invalidation flows and failure behavi
 ## Feature Capabilities
 
 **Commands (write, primary)**
+
 - Create an event with one or more ticket tiers.
 - Book tickets for a tier. Overselling is prevented by an atomic conditional update (`available >= qty`) plus a
   database check constraint; a sold-out booking returns 409.
 
 **Queries (read, replica or cache)**
+
 - View an event with its tiers and remaining availability.
 - List events by city (paginated).
 - View a booking.
 
 **Consistency and caching behaviour**
+
 - Every command returns an `X-Read-After` token; a read that presents it is served by the primary until the replica
   has applied that write (LSN mode, default) or for a fixed 5s window (time mode).
 - Every query response says who answered (`X-Served-By`: `cache`, `replica` or `primary`) and what the cache did
@@ -46,31 +51,31 @@ Block diagram, component roles, read/write/invalidation flows and failure behavi
 
 Start it with `scripts/ui.sh` (see [Web UI](#web-ui)). The page has these views:
 
-| View | What it does |
-| ---- | ------------ |
-| Status bar | Shows whether the API is reachable. |
-| Read-after token bar | Shows the latest `X-Read-After` token and its age. The UI sends this token on every read. |
-| Create event | Form for name, city, start time and ticket tiers (name, price in cents, quantity). |
-| Book tickets | Pick an event and tier, set quantity and email, and book. "Load tiers" fills the tier list. |
-| View event | Fetch one event by id. Recently created ids are offered as shortcuts. |
-| List events by city | Fetch a page of events for a city (or all cities). |
-| View booking | Fetch one booking by id. |
-| Hot key burst | Fires many concurrent reads of one event and shows how many were `hit`, `stale`, `miss` or `coalesced`, with latency percentiles. |
-| Last response | Method, path, status, `X-Served-By`, `X-Cache`, latency and the JSON body. |
-| Request log | History of every call with the same details; click a row to see its response. |
+| View                 | What it does                                                                                                                      |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Status bar           | Shows whether the API is reachable.                                                                                               |
+| Read-after token bar | Shows the latest `X-Read-After` token and its age. The UI sends this token on every read.                                         |
+| Create event         | Form for name, city, start time and ticket tiers (name, price in cents, quantity).                                                |
+| Book tickets         | Pick an event and tier, set quantity and email, and book. "Load tiers" fills the tier list.                                       |
+| View event           | Fetch one event by id. Recently created ids are offered as shortcuts.                                                             |
+| List events by city  | Fetch a page of events for a city (or all cities).                                                                                |
+| View booking         | Fetch one booking by id.                                                                                                          |
+| Hot key burst        | Fires many concurrent reads of one event and shows how many were `hit`, `stale`, `miss` or `coalesced`, with latency percentiles. |
+| Last response        | Method, path, status, `X-Served-By`, `X-Cache`, latency and the JSON body.                                                        |
+| Request log          | History of every call with the same details; click a row to see its response.                                                     |
 
 ## Database Schema
 
 Managed by Flyway (`src/main/resources/db/migration`). All writes go to the primary; the replica receives every
 table through streaming replication.
 
-| Table | Side | What it stores |
-| ----- | ---- | -------------- |
-| `events` | Write model | One row per event: id, name, city, start time, created time. |
-| `ticket_tiers` | Write model | Ticket tiers of an event: name, price in cents, `total` seats and `available` seats. A check constraint keeps `0 <= available <= total`. |
-| `bookings` | Write model | One row per booking: event, tier, quantity, customer email, created time. |
+| Table           | Side                      | What it stores                                                                                                                                                                                                                                            |
+| --------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `events`        | Write model               | One row per event: id, name, city, start time, created time.                                                                                                                                                                                              |
+| `ticket_tiers`  | Write model               | Ticket tiers of an event: name, price in cents, `total` seats and `available` seats. A check constraint keeps `0 <= available <= total`.                                                                                                                  |
+| `bookings`      | Write model               | One row per booking: event, tier, quantity, customer email, created time.                                                                                                                                                                                 |
 | `event_listing` | Read model (denormalized) | One row per event with the fields a listing needs: name, city, start time, lowest price and total available tickets. Indexed by `(city, starts_at, event_id)`. Updated in the same transaction as the write model, so replication delivers both together. |
-| `outbox` | Integration | Change announcements (aggregate, type, JSON payload). A row is inserted and deleted in the same transaction as the business change; Debezium reads the insert from the WAL and publishes it to Kafka, so the table stays empty. |
+| `outbox`        | Integration               | Change announcements (aggregate, type, JSON payload). A row is inserted and deleted in the same transaction as the business change; Debezium reads the insert from the WAL and publishes it to Kafka, so the table stays empty.                           |
 
 ## Strategy: read-your-writes token
 
@@ -87,10 +92,10 @@ Anonymous browsing (the high-volume read load) never touches the primary. Only u
 
 Two approaches are supported. Pick one with `app.consistency.mode` (env `CONSISTENCY_MODE`); each has its own document:
 
-| Mode | Token | A read with a token goes to the primary when... | Document |
-|---|---|---|---|
+| Mode            | Token                                   | A read with a token goes to the primary when...                                                | Document                                                     |
+| --------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | `lsn` (default) | Primary WAL position (e.g. `0/16B3748`) | the replica has not yet replayed that position (waits up to `LSN_WAIT_TIMEOUT`, 100 ms, first) | [docs/read-your-writes-lsn.md](docs/read-your-writes-lsn.md) |
-| `time` | Commit time (epoch ms) | the token is younger than `READ_AFTER_WINDOW` (5s) | [docs/read-your-writes-5s.md](docs/read-your-writes-5s.md) |
+| `time`          | Commit time (epoch ms)                  | the token is younger than `READ_AFTER_WINDOW` (5s)                                             | [docs/read-your-writes-5s.md](docs/read-your-writes-5s.md)   |
 
 The client behaves the same in both: store the token from the command response and send it back unchanged.
 Example: `CONSISTENCY_MODE=time scripts/start.sh`.
