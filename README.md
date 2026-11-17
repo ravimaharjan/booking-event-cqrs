@@ -47,36 +47,6 @@ Block diagram, component roles, read/write/invalidation flows and failure behavi
 - Every query response says who answered (`X-Served-By`: `cache`, `replica` or `primary`) and what the cache did
   (`X-Cache`: `hit`, `stale`, `miss`, `coalesced` or `bypass`).
 
-### Web UI views
-
-Start it with `scripts/ui.sh` (see [Web UI](#web-ui)). The page has these views:
-
-| View                 | What it does                                                                                                                      |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Status bar           | Shows whether the API is reachable.                                                                                               |
-| Read-after token bar | Shows the latest `X-Read-After` token and its age. The UI sends this token on every read.                                         |
-| Create event         | Form for name, city, start time and ticket tiers (name, price in cents, quantity).                                                |
-| Book tickets         | Pick an event and tier, set quantity and email, and book. "Load tiers" fills the tier list.                                       |
-| View event           | Fetch one event by id. Recently created ids are offered as shortcuts.                                                             |
-| List events by city  | Fetch a page of events for a city (or all cities).                                                                                |
-| View booking         | Fetch one booking by id.                                                                                                          |
-| Hot key burst        | Fires many concurrent reads of one event and shows how many were `hit`, `stale`, `miss` or `coalesced`, with latency percentiles. |
-| Last response        | Method, path, status, `X-Served-By`, `X-Cache`, latency and the JSON body.                                                        |
-| Request log          | History of every call with the same details; click a row to see its response.                                                     |
-
-## Database Schema
-
-Managed by Flyway (`src/main/resources/db/migration`). All writes go to the primary; the replica receives every
-table through streaming replication.
-
-| Table           | Side                      | What it stores                                                                                                                                                                                                                                            |
-| --------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `events`        | Write model               | One row per event: id, name, city, start time, created time.                                                                                                                                                                                              |
-| `ticket_tiers`  | Write model               | Ticket tiers of an event: name, price in cents, `total` seats and `available` seats. A check constraint keeps `0 <= available <= total`.                                                                                                                  |
-| `bookings`      | Write model               | One row per booking: event, tier, quantity, customer email, created time.                                                                                                                                                                                 |
-| `event_listing` | Read model (denormalized) | One row per event with the fields a listing needs: name, city, start time, lowest price and total available tickets. Indexed by `(city, starts_at, event_id)`. Updated in the same transaction as the write model, so replication delivers both together. |
-| `outbox`        | Integration               | Change announcements (aggregate, type, JSON payload). A row is inserted and deleted in the same transaction as the business change; Debezium reads the insert from the WAL and publishes it to Kafka, so the table stays empty.                           |
-
 ## Strategy: read-your-writes token
 
 Commands write to the **primary**; queries read from a **replica**. Replication lag means a user who just
@@ -124,6 +94,36 @@ Detailed documents:
   in-process cache), with measured results.
 - **[single-flight-vs-stale-while-revalidate.md](single-flight-vs-stale-while-revalidate.md)**: how a hot key
   expiring under 10,000 concurrent requests results in one database read, and where each technique is applied.
+
+### Web UI views
+
+Start it with `scripts/ui.sh` (see [Web UI](#web-ui)). The page has these views:
+
+| View                 | What it does                                                                                                                      |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Status bar           | Shows whether the API is reachable.                                                                                               |
+| Read-after token bar | Shows the latest `X-Read-After` token and its age. The UI sends this token on every read.                                         |
+| Create event         | Form for name, city, start time and ticket tiers (name, price in cents, quantity).                                                |
+| Book tickets         | Pick an event and tier, set quantity and email, and book. "Load tiers" fills the tier list.                                       |
+| View event           | Fetch one event by id. Recently created ids are offered as shortcuts.                                                             |
+| List events by city  | Fetch a page of events for a city (or all cities).                                                                                |
+| View booking         | Fetch one booking by id.                                                                                                          |
+| Hot key burst        | Fires many concurrent reads of one event and shows how many were `hit`, `stale`, `miss` or `coalesced`, with latency percentiles. |
+| Last response        | Method, path, status, `X-Served-By`, `X-Cache`, latency and the JSON body.                                                        |
+| Request log          | History of every call with the same details; click a row to see its response.                                                     |
+
+## Database Schema
+
+Managed by Flyway (`src/main/resources/db/migration`). All writes go to the primary; the replica receives every
+table through streaming replication.
+
+| Table           | Side                      | What it stores                                                                                                                                                                                                                                            |
+| --------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `events`        | Write model               | One row per event: id, name, city, start time, created time.                                                                                                                                                                                              |
+| `ticket_tiers`  | Write model               | Ticket tiers of an event: name, price in cents, `total` seats and `available` seats. A check constraint keeps `0 <= available <= total`.                                                                                                                  |
+| `bookings`      | Write model               | One row per booking: event, tier, quantity, customer email, created time.                                                                                                                                                                                 |
+| `event_listing` | Read model (denormalized) | One row per event with the fields a listing needs: name, city, start time, lowest price and total available tickets. Indexed by `(city, starts_at, event_id)`. Updated in the same transaction as the write model, so replication delivers both together. |
+| `outbox`        | Integration               | Change announcements (aggregate, type, JSON payload). A row is inserted and deleted in the same transaction as the business change; Debezium reads the insert from the WAL and publishes it to Kafka, so the table stays empty.                           |
 
 ## Run
 
